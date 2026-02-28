@@ -32,6 +32,12 @@
 
   function getTypeFromUrl(url) {
     const lowerUrl = url.toLowerCase();
+    
+    // Kiểm tra YouTube trước
+    if (lowerUrl.includes("youtu.be") || lowerUrl.includes("youtube.com/watch")) {
+      return "YOUTUBE";
+    }
+
     if (lowerUrl.includes(".mpd") || lowerUrl.includes("%2empd")) return "DASH";
     if (lowerUrl.includes(".m3u8") || lowerUrl.includes("%2em3u8"))
       return "HLS";
@@ -42,6 +48,15 @@
     if (lowerUrl.includes("mpd")) return "DASH";
 
     return "UNKNOWN";
+  }
+
+  // Helper lọc YouTube
+  function shouldDetect(url, type) {
+    const isYouTubePage = window.location.hostname.includes("youtube.com");
+    if (isYouTubePage && type !== "YOUTUBE") {
+      return false;
+    }
+    return true;
   }
 
   // Intercept XMLHttpRequest
@@ -56,14 +71,17 @@
   XMLHttpRequest.prototype.send = function () {
     const url = this._url;
     if (url && typeof url === "string" && isStreamUrl(url)) {
-      window.postMessage(
-        {
-          type: "STREAM_URL_DETECTED",
-          url: url,
-          type: getTypeFromUrl(url),
-        },
-        "*",
-      );
+      const type = getTypeFromUrl(url);
+      if (shouldDetect(url, type)) {
+        window.postMessage(
+          {
+            type: "STREAM_URL_DETECTED",
+            url: url,
+            type: type,
+          },
+          "*",
+        );
+      }
     }
     return originalXHRSend.apply(this, arguments);
   };
@@ -75,14 +93,17 @@
       typeof input === "string" ? input : input?.url || input?.toString();
 
     if (url && typeof url === "string" && isStreamUrl(url)) {
-      window.postMessage(
-        {
-          type: "STREAM_URL_DETECTED",
-          url: url,
-          type: getTypeFromUrl(url),
-        },
-        "*",
-      );
+      const type = getTypeFromUrl(url);
+      if (shouldDetect(url, type)) {
+        window.postMessage(
+          {
+            type: "STREAM_URL_DETECTED",
+            url: url,
+            type: type,
+          },
+          "*",
+        );
+      }
     }
 
     return originalFetch.apply(this, [input, init]);
@@ -92,17 +113,38 @@
   const originalWebSocket = window.WebSocket;
   window.WebSocket = function (url, protocols) {
     if (url && typeof url === "string" && isStreamUrl(url)) {
-      window.postMessage(
-        {
-          type: "STREAM_URL_DETECTED",
-          url: url,
-          type: "WEBSOCKET",
-        },
-        "*",
-      );
+      const type = "WEBSOCKET";
+      if (shouldDetect(url, type)) {
+        window.postMessage(
+          {
+            type: "STREAM_URL_DETECTED",
+            url: url,
+            type: type,
+          },
+          "*",
+        );
+      }
     }
     return new originalWebSocket(url, protocols);
   };
 
   console.log("[Stream Downloader] Injected script loaded");
+
+  // SPA Path Change Proxy
+  const _pushState = history.pushState;
+  const _replaceState = history.replaceState;
+
+  history.pushState = function () {
+    _pushState.apply(this, arguments);
+    window.postMessage({ type: "LOCATION_CHANGE" }, "*");
+  };
+
+  history.replaceState = function () {
+    _replaceState.apply(this, arguments);
+    window.postMessage({ type: "LOCATION_CHANGE" }, "*");
+  };
+
+  window.addEventListener("popstate", () => {
+    window.postMessage({ type: "LOCATION_CHANGE" }, "*");
+  });
 })();

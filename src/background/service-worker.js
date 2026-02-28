@@ -120,11 +120,24 @@ async function handleStreamDetected(data, sender) {
     source: data.source,
   });
 
-  // Check duplicate
-  const exists = detectedStreams.some((s) => s.url === data.url);
+  // Check duplicate (including YouTube video ID deduplication)
+  const exists = detectedStreams.some((s) => {
+    if (s.url === data.url) return true;
+    
+    // Deduplicate YouTube videos
+    if (s.type === "YOUTUBE" && data.type === "YOUTUBE") {
+      const getYouTubeId = (url) => {
+        const match = url.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=)([^&?]+)/i);
+        return match ? match[1] : url;
+      };
+      if (getYouTubeId(s.url) === getYouTubeId(data.url)) return true;
+    }
+    return false;
+  });
+  
   if (exists) {
     console.log(
-      "[Stream Downloader] Duplicate URL, skipping:",
+      "[Stream Downloader] Duplicate URL or Video, skipping:",
       data.url.substring(0, 50),
     );
     return;

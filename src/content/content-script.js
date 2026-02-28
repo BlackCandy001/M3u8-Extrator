@@ -59,6 +59,13 @@ function debounce(func, wait) {
 function sendUrlToBackground(url, type, source) {
   if (detectedUrls.has(url)) return;
 
+  // Lọc nâng cao cho YouTube: Chỉ cho phép type YOUTUBE trên trang youtube.com
+  const isYouTubePage = window.location.hostname.includes("youtube.com");
+  if (isYouTubePage && type !== "YOUTUBE") {
+    // Bỏ qua các luồng HLS/DASH/JSON kỹ thuật của YouTube player
+    return;
+  }
+
   detectedUrls.add(url);
 
   browserAPI.runtime
@@ -138,10 +145,23 @@ function injectNetworkObserver() {
   // Lắng nghe sự kiện từ injected script
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
-    if (event.data.type !== "STREAM_URL_DETECTED") return;
+    
+    // Xử lý stream detected
+    if (event.data.type === "STREAM_URL_DETECTED") {
+      const { url, type } = event.data;
+      sendUrlToBackground(url, type, "network");
+    }
 
-    const { url, type } = event.data;
-    sendUrlToBackground(url, type, "network");
+    // Xử lý SPA route changes
+    if (event.data.type === "LOCATION_CHANGE") {
+      console.log("[Stream Downloader] SPA Navigation Detected via postMessage, Re-running checks");
+      // Clear detected for the new page to avoid staying on the old one
+      detectedUrls.clear();
+      setTimeout(() => {
+        detectVideoElements();
+        detectFromDOM();
+      }, 1000);
+    }
   });
 }
 
@@ -408,11 +428,20 @@ function runDetection() {
     attributeFilter: ["src", "data-src"],
   });
 
-  // Keep a fallback periodic check (less frequent)
+  // Keep a fallback periodic check
+  let lastUrl = window.location.href;
   setInterval(() => {
+    // Detect URL changes (fallback for SPAs)
+    if (window.location.href !== lastUrl) {
+      console.log("[Stream Downloader] URL Change detected via interval, Re-running checks");
+      lastUrl = window.location.href;
+      detectedUrls.clear();
+      continuousDetection();
+    }
+    
     detectVideoElements();
     detectFromDOM();
-  }, 5000);
+  }, 3000);
 }
 
 // Start khi DOM ready

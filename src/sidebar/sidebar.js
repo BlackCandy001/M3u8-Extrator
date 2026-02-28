@@ -188,6 +188,9 @@ function renderStreams() {
         <button class="btn btn-secondary btn-copy" data-url="${escapeHtml(stream.url)}">
           Copy
         </button>
+        <a href="${escapeHtml(stream.url)}" target="_blank" class="btn btn-secondary btn-open" style="text-decoration: none; display: flex; align-items: center; justify-content: center;">
+          Mở
+        </a>
         <button class="btn btn-primary btn-send" data-url="${escapeHtml(stream.url)}" ${appConnected ? "" : "disabled"}>
           Send
         </button>
@@ -279,7 +282,15 @@ async function sendAllStreams() {
   let successCount = 0;
   let failCount = 0;
 
-  for (const stream of streams) {
+  // Deduplicate streams by URL before sending
+  const uniqueUrls = new Set();
+  const streamsToSend = streams.filter((stream) => {
+    if (uniqueUrls.has(stream.url)) return false;
+    uniqueUrls.add(stream.url);
+    return true;
+  });
+
+  for (const stream of streamsToSend) {
     try {
       const result = await browserAPI.runtime.sendMessage({
         action: "SEND_TO_APP",
