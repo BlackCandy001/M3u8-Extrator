@@ -8,7 +8,8 @@
   if (window.__streamDownloaderInjected) return;
   window.__streamDownloaderInjected = true;
 
-  const GLOBAL_STREAM_REGEX = /https?:\/\/[^\s"'<>]+?\.(m3u8|mpd)[^\s"'<>]*/i;
+  const GLOBAL_STREAM_REGEX =
+    /https?(?::|\\:)(?:\/\/|\\\/\\\/)[^\s"'<>]+?\.(?:m3u8|mpd|m3u)(?:[^\s"'<>]*)/gi;
 
   function isStreamUrl(url) {
     if (!url || typeof url !== "string") return false;
@@ -17,17 +18,29 @@
     if (
       lowerUrl.includes(".m3u8") ||
       lowerUrl.includes(".mpd") ||
-      lowerUrl.includes(".m3u")
+      lowerUrl.includes(".m3u") ||
+      lowerUrl.includes("%2em3u8") ||
+      lowerUrl.includes("m3u8") ||
+      lowerUrl.includes("playlist") ||
+      lowerUrl.includes("manifest")
     )
       return true;
     // More complex regex check
-    return GLOBAL_STREAM_REGEX.test(url);
+    const regex = new RegExp(GLOBAL_STREAM_REGEX.source, "i");
+    return regex.test(url);
   }
 
   function getTypeFromUrl(url) {
-    if (url.includes(".mpd")) return "DASH";
-    if (url.includes(".m3u8")) return "HLS";
-    if (url.includes(".m3u")) return "M3U";
+    const lowerUrl = url.toLowerCase();
+    if (lowerUrl.includes(".mpd") || lowerUrl.includes("%2empd")) return "DASH";
+    if (lowerUrl.includes(".m3u8") || lowerUrl.includes("%2em3u8"))
+      return "HLS";
+    if (lowerUrl.includes(".m3u") || lowerUrl.includes("%2em3u")) return "M3U";
+
+    // High confidence fallback
+    if (lowerUrl.includes("m3u8")) return "HLS";
+    if (lowerUrl.includes("mpd")) return "DASH";
+
     return "UNKNOWN";
   }
 
